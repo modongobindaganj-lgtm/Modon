@@ -802,6 +802,16 @@
         let appData = JSON.parse(localStorage.getItem('moodOnData')) || defaultData;
         let editingLinkId = null;
 
+        // Helper function to convert a File to Base64 (Promise based for async/await)
+        function getFileAsBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = (error) => reject(error);
+                reader.readAsDataURL(file);
+            });
+        }
+
         // Visitor counter with date tracking (session-based)
         if (!sessionStorage.getItem('moodOnVisited')) {
             sessionStorage.setItem('moodOnVisited', 'true');
@@ -991,7 +1001,6 @@
         logoWrapper.addEventListener('touchend', cancelPress);
         logoWrapper.addEventListener('touchcancel', cancelPress);
 
-
         // --- 7-Second Long Press Control & Password Verification for Reset Button ---
         let resetPressTimer = null;
         const resetBtn = document.getElementById('resetBtn');
@@ -1027,7 +1036,6 @@
         resetBtn.addEventListener('touchstart', startResetPress, {passive: false});
         resetBtn.addEventListener('touchend', cancelResetPress);
         resetBtn.addEventListener('touchcancel', cancelResetPress);
-
 
         // Modals
         function openModal(id) {
@@ -1155,26 +1163,27 @@
             });
         }
 
-        function saveShopSettings() {
+        async function saveShopSettings() {
             appData.shop.name = document.getElementById('editShopName').value;
             appData.shop.tagline = document.getElementById('editShopTagline').value;
 
             const logoFile = document.getElementById('editShopLogoFile').files[0];
             if(logoFile) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    appData.shop.logo = e.target.result;
-                    saveData(); alert('সেটিং সেভ হয়েছে!');
+                try {
+                    appData.shop.logo = await getFileAsBase64(logoFile);
+                } catch (err) {
+                    console.error(err);
                 }
-                reader.readAsDataURL(logoFile);
             } else {
-                appData.shop.logo = document.getElementById('editShopLogoUrl').value;
-                saveData(); alert('সেটিং সেভ হয়েছে!');
+                const logoUrl = document.getElementById('editShopLogoUrl').value;
+                if(logoUrl) appData.shop.logo = logoUrl;
             }
+            saveData(); 
+            alert('সেটিং সেভ হয়েছে!');
         }
 
-        // Product Management Functions (Unlimited)
-        function saveProduct() {
+        // Product Management Functions (Unlimited) with File Support
+        async function saveProduct() {
             const title = document.getElementById('prodTitleInput').value;
             const price = document.getElementById('prodPriceInput').value;
             const description = document.getElementById('prodDescInput').value;
@@ -1183,31 +1192,36 @@
 
             if(!title || !price) { alert('প্রোডাক্টের নাম ও দাম দিন!'); return; }
 
-            const handleProdSave = (imgSrc) => {
-                if(!appData.products) appData.products = [];
-                appData.products.push({
-                    id: 'prod_' + Date.now(),
-                    title,
-                    price,
-                    description,
-                    image: imgSrc || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=200&auto=format&fit=crop&q=80'
-                });
-                document.getElementById('prodTitleInput').value = '';
-                document.getElementById('prodPriceInput').value = '';
-                document.getElementById('prodDescInput').value = '';
-                document.getElementById('prodUrlInput').value = '';
-                document.getElementById('prodFileInput').value = '';
-                saveData();
-                populateAdminPanel();
-            };
-
+            let imgSrc = 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=200&auto=format&fit=crop&q=80';
+            
             if(file) {
-                const reader = new FileReader();
-                reader.onload = (e) => handleProdSave(e.target.result);
-                reader.readAsDataURL(file);
-            } else {
-                handleProdSave(url);
+                try {
+                    imgSrc = await getFileAsBase64(file);
+                } catch (err) {
+                    console.error("File read error:", err);
+                }
+            } else if(url) {
+                imgSrc = url;
             }
+
+            if(!appData.products) appData.products = [];
+            appData.products.push({
+                id: 'prod_' + Date.now(),
+                title,
+                price,
+                description,
+                image: imgSrc
+            });
+
+            document.getElementById('prodTitleInput').value = '';
+            document.getElementById('prodPriceInput').value = '';
+            document.getElementById('prodDescInput').value = '';
+            document.getElementById('prodUrlInput').value = '';
+            document.getElementById('prodFileInput').value = '';
+            
+            saveData();
+            populateAdminPanel();
+            alert('প্রোডাক্ট সফলভাবে যোগ করা হয়েছে!');
         }
 
         function deleteProduct(id) {
@@ -1254,7 +1268,7 @@
             }
         }
 
-        function saveLink() {
+        async function saveLink() {
             const catId = document.getElementById('linkCatSelect').value;
             const title = document.getElementById('linkTitle').value;
             const url = document.getElementById('linkUrl').value;
@@ -1263,31 +1277,39 @@
 
             if(!catId || !title || !url) { alert('দয়া করে শিরোনাম ও লিঙ্ক দিন!'); return; }
 
-            const handleSave = (imgSrc) => {
-                if(editingLinkId) {
-                    const idx = appData.links.findIndex(l => l.id === editingLinkId);
-                    appData.links[idx] = { id: editingLinkId, catId, title, url, icon: imgSrc || appData.links[idx].icon };
-                    editingLinkId = null;
-                } else {
-                    appData.links.push({
-                        id: 'link_' + Date.now(), catId, title, url,
-                        icon: imgSrc || 'https://cdn-icons-png.flaticon.com/512/1006/1006771.png'
-                    });
-                }
-                document.getElementById('linkTitle').value = '';
-                document.getElementById('linkUrl').value = '';
-                document.getElementById('linkIconUrl').value = '';
-                document.getElementById('linkIconFile').value = '';
-                saveData(); populateAdminPanel();
-            };
+            let iconSrc = 'https://cdn-icons-png.flaticon.com/512/1006/1006771.png';
 
             if(iconFile) {
-                const reader = new FileReader();
-                reader.onload = (e) => handleSave(e.target.result);
-                reader.readAsDataURL(iconFile);
-            } else {
-                handleSave(iconUrl);
+                try {
+                    iconSrc = await getFileAsBase64(iconFile);
+                } catch(err) {
+                    console.error("Icon read error:", err);
+                }
+            } else if(iconUrl) {
+                iconSrc = iconUrl;
+            } else if(editingLinkId) {
+                const existing = appData.links.find(l => l.id === editingLinkId);
+                if(existing) iconSrc = existing.icon;
             }
+
+            if(editingLinkId) {
+                const idx = appData.links.findIndex(l => l.id === editingLinkId);
+                appData.links[idx] = { id: editingLinkId, catId, title, url, icon: iconSrc };
+                editingLinkId = null;
+            } else {
+                appData.links.push({
+                    id: 'link_' + Date.now(), catId, title, url, icon: iconSrc
+                });
+            }
+
+            document.getElementById('linkTitle').value = '';
+            document.getElementById('linkUrl').value = '';
+            document.getElementById('linkIconUrl').value = '';
+            document.getElementById('linkIconFile').value = '';
+            
+            saveData(); 
+            populateAdminPanel();
+            alert('লিঙ্ক সফলভাবে সেভ হয়েছে!');
         }
 
         function editLink(id) {
